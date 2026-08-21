@@ -10,6 +10,8 @@ export const checkConnectors = createServerFn({ method: "GET" }).handler(async (
     slack: "disconnected",
     huggingface: "disconnected",
     telegram: "disconnected",
+    pricecharting: "disconnected",
+    ebay: "disconnected",
   };
 
   try {
@@ -56,6 +58,28 @@ export const checkConnectors = createServerFn({ method: "GET" }).handler(async (
     } catch {
       statuses.telegram = "error";
     }
+  }
+
+  try {
+    const r = await fetch("https://www.pricecharting.com/search-products?q=topps&type=prices", {
+      method: "HEAD",
+      redirect: "follow",
+      signal: AbortSignal.timeout(4000),
+    });
+    statuses.pricecharting = r.ok || r.status === 405 ? "connected" : "error";
+  } catch {
+    statuses.pricecharting = "error";
+  }
+
+  try {
+    const r = await fetch("https://www.ebay.com/sch/i.html?_nkw=topps&LH_Sold=1", {
+      method: "HEAD",
+      redirect: "manual",
+      signal: AbortSignal.timeout(4000),
+    });
+    statuses.ebay = r.status === 200 ? "connected" : "error";
+  } catch {
+    statuses.ebay = "error";
   }
 
   return statuses;

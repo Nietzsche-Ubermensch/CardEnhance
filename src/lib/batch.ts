@@ -2,7 +2,7 @@ import { create } from "zustand";
 import JSZip from "jszip";
 import { expandFiles } from "./pipeline";
 import { validateUploadedImage } from "./validate";
-import { detectCards, rectifyCard } from "./detect-sheet";
+import { detectCards, rectifyCard, type CardDetection } from "./detect-sheet";
 import { identifyCard, identityLabel } from "./identify";
 import { saveProcessedCard } from "./connectors/persist";
 import { notifyCardProcessed } from "./connectors/notify";
@@ -25,6 +25,7 @@ import {
   thumbnail,
 } from "./image-ops";
 import type { CardIdentity } from "./types";
+import { identityQuery, lookupCardPrices, type PriceQuote } from "./prices";
 
 export type Stage =
   | "queued"
@@ -86,6 +87,9 @@ export type CardRecord = {
   geometryConfidence: number;
   geometryMethod?: string;
   identity?: CardIdentity;
+  prices?: PriceQuote | null;
+  priceStatus?: "idle" | "loading" | "ok" | "empty" | "error";
+  priceError?: string;
   warnings: string[];
   error?: string;
   thumbUrl: string;
@@ -136,13 +140,18 @@ type Store = {
   selectAll: (on: boolean) => void;
   selectByStage: (stage: "completed" | "failed") => void;
   addFiles: (files: File[]) => Promise<void>;
-  rotateCard: (id: string, degrees: 90 | -90 | 0 | 180 | 270) => Promise<void>;
+  rotateCard: (id: string, degrees: 0 | 90 | 180 | 270) => Promise<void>;
   processUpscale: (ids: string[]) => Promise<void>;
   processDescratch: (ids: string[]) => Promise<void>;
   processCombined: (ids: string[]) => Promise<void>;
   retryCards: (ids: string[]) => Promise<void>;
   resetRectified: (id: string) => Promise<void>;
+  fetchPrices: (ids: string[]) => Promise<void>;
   exportCards: (ids: string[], type: ArtifactType) => Promise<void>;
+  removeSource: (id: string) => void;
+  retrySource: (id: string) => Promise<void>;
+  exportStatus: "idle" | "building" | "ready" | "failed";
+  exportError?: string;
   cancel: () => void;
 };
 
@@ -226,11 +235,7 @@ export const useBatch = create<Store>((set, get) => ({
     if (!card?.croppedId) return;
     const img = pixels.get(card.croppedId);
     if (!img) return;
-    const target = (degrees === -90 ? (card.orientation + 270) % 360 : degrees === 90 ? (card.orientation + 90) % 360 : degrees) as
-      | 0
-      | 90
-      | 180
-      | 270;
+    const target = degrees;
     const delta = ((target - card.orientation + 360) % 360) as 0 | 90 | 180 | 270;
     if (delta === 0) return;
     const rot = rotateImage(img, delta);
@@ -296,7 +301,66 @@ export const useBatch = create<Store>((set, get) => ({
       compareRight: "cropped",
     });
   },
+  fetchPrices: async (ids) => {
+    const targets = get().cards.filter((c) => ids.includes(c.id));
+    await Promise.all(targets.map((card) => quoteCard(card.id, get, set)));
+  },
+  exportStatus: "idle",
+  exportError: undefined,
+  removeSource: (id) => {
+    const nextCards = get().cards.filter((c) => c.sourceId !== id);
+    set({
+      sources: get().sources.filter((s) => s.id !== id),
+      cards: nextCards,
+      selectedCardId: nextCards.some((c) => c.id === get().selectedCardId)
+        ? get().selectedCardId
+        : nextCards[0]?.id ?? null,
+      updatedAt: Date.now(),
+    });
+  },
+  retrySource: async (id) => {
+    const source = get().sources.find((s) => s.id === id);
+    if (!source?.originalArtifactId) return;
+    const srcArt = getArtifact(source.originalArtifactId);
+    if (!srcArt) return;
+    set({
+      sources: get().sources.map((s) => (s.id === id ? { ...s, status: "detecting", error: undefined } : s)),
+      cards: get().cards.filter((c) => c.sourceId !== id),
+      batchStatus: "retrying",
+    });
+    try {
+      const origPixels = await imageDataFromBlob(srcArt.blob);
+      const detections = await detectCards(origPixels);
+      if (!detections.length) throw new Error("No card detected");
+      for (const det of detections) {
+        if (cancelled) return;
+        await emitDetectedCard({
+          origPixels,
+          origArtId: srcArt.id,
+          sourceId: source.id,
+          filename: source.filename,
+          sourceIndex: source.sourceIndex,
+          det,
+          get,
+          set,
+        });
+      }
+      set({
+        sources: get().sources.map((s) => (s.id === id ? { ...s, status: "completed" } : s)),
+      });
+    } catch (err) {
+      set({
+        sources: get().sources.map((s) =>
+          s.id === id ? { ...s, status: "failed", error: err instanceof Error ? err.message : "Retry failed" } : s,
+        ),
+      });
+    }
+    const st = nowBatchStatus(get().cards, get().sources);
+    set({ batchStatus: st, dropPhase: dropFromBatch(st) });
+  },
   exportCards: async (ids, type) => {
+    set({ exportStatus: "building", exportError: undefined });
+    try {
     const cards = get().cards.filter((c) => ids.includes(c.id));
     const zip = new JSZip();
     const folder = zip.folder("images");
@@ -358,6 +422,9 @@ export const useBatch = create<Store>((set, get) => ({
         descratch_mask_coverage: art.maskCoverage ?? card.maskCoverage ?? null,
         warnings: card.warnings,
         status: card.stage,
+        ocr_query: identityQuery(card.identity),
+        price_median: card.prices?.medianUngraded ?? null,
+        ebay_sold_url: card.prices?.ebaySoldUrl ?? null,
       });
     }
     zip.file("manifest.json", JSON.stringify({ generated_at: new Date().toISOString(), count: n, cards: manifest }, null, 2));
@@ -368,11 +435,53 @@ export const useBatch = create<Store>((set, get) => ({
     a.download = `CardEnhance_Export_${Date.now()}.zip`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
+    if (!n) throw new Error("No exportable artifacts for that version");
+    set({ exportStatus: "ready" });
+    } catch (err) {
+      set({ exportStatus: "failed", exportError: err instanceof Error ? err.message : "Export failed" });
+      throw err;
+    }
   },
 }));
 
 type Get = () => Store;
 type Set = (partial: Partial<Store> | ((s: Store) => Partial<Store>)) => void;
+
+async function quoteCard(id: string, get: Get, set: Set) {
+  const card = get().cards.find((c) => c.id === id);
+  if (!card) return;
+  const query = identityQuery(card.identity);
+  if (!query) {
+    set({
+      cards: get().cards.map((c) =>
+        c.id === id ? { ...c, priceStatus: "empty", prices: null, priceError: "No OCR identity" } : c,
+      ),
+    });
+    return;
+  }
+  set({
+    cards: get().cards.map((c) => (c.id === id ? { ...c, priceStatus: "loading", priceError: undefined } : c)),
+  });
+  try {
+    const quote = await lookupCardPrices({ data: { identity: card.identity ?? {} } });
+    const empty = quote.listings.length === 0;
+    set({
+      cards: get().cards.map((c) =>
+        c.id === id
+          ? { ...c, prices: quote, priceStatus: empty ? "empty" : "ok", priceError: undefined }
+          : c,
+      ),
+    });
+  } catch (err) {
+    set({
+      cards: get().cards.map((c) =>
+        c.id === id
+          ? { ...c, priceStatus: "error", priceError: err instanceof Error ? err.message : "Price lookup failed" }
+          : c,
+      ),
+    });
+  }
+}
 
 async function persistCard(card: CardRecord) {
   try {
@@ -473,78 +582,105 @@ async function ingestSource(file: File, get: Get, set: Set) {
     }
     for (const det of detections) {
       if (cancelled) return;
-      const cardId = crypto.randomUUID();
-      const rectified = rectifyCard(origPixels, det);
-      const croppedArt = await createDerivedArtifact({
-        cardId,
+      await emitDetectedCard({
+        origPixels,
+        origArtId: origArt.id,
         sourceId,
-        artifactType: "cropped",
-        parentArtifact: origArt.id,
-        image: rectified,
-      });
-      pixels.set(croppedArt.id, rectified);
-      let oriented = rectified;
-      let orientation: 0 | 90 | 180 | 270 = 0;
-      let orientationMethod = "layout";
-      let identity: CardIdentity | undefined;
-      try {
-        const idn = await identifyCard(rectified, validated.filename, { vision: false });
-        identity = idn.identity;
-        if (idn.rotated) {
-          oriented = rotateImage(rectified, 180);
-          orientation = 180;
-          orientationMethod = "ocr";
-          const re = await createDerivedArtifact({
-            cardId,
-            sourceId,
-            artifactType: "cropped",
-            parentArtifact: croppedArt.id,
-            image: oriented,
-          });
-          pixels.set(re.id, oriented);
-          croppedArt.id = re.id;
-        }
-      } catch {
-        /* keep rectified */
-      }
-      const thumb = URL.createObjectURL(await encodeImage(thumbnail(oriented), "jpg", 0.8));
-      const card: CardRecord = {
-        id: cardId,
-        sourceId,
-        sourceFilename: validated.filename,
+        filename: validated.filename,
         sourceIndex,
-        cardIndex: det.cardIndex,
-        stage: "completed",
-        selected: false,
-        orientation,
-        orientationMethod,
-        orientationConfidence: orientation === 180 ? 0.8 : 0.55,
-        detectorMethod: det.detectorMethod,
-        detectorConfidence: det.confidence,
-        geometryConfidence: det.geometryConfidence,
-        geometryMethod: det.geometryMethod,
-        identity,
-        warnings: det.warnings,
-        thumbUrl: thumb,
-        croppedId: croppedArt.id,
-        upscaledId: null,
-        descratchedId: null,
-        combinedId: null,
-        originalId: origArt.id,
-      };
-      set({
-        cards: [...get().cards, card],
-        selectedCardId: get().selectedCardId ?? cardId,
-        sources: get().sources.map((s) => (s.id === sourceId ? { ...s, status: "completed" } : s)),
+        det,
+        get,
+        set,
       });
-      void persistCard(card);
     }
+    set({
+      sources: get().sources.map((s) => (s.id === sourceId ? { ...s, status: "completed" } : s)),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Crop failed";
     set({
       sources: get().sources.map((s) => (s.id === sourceId ? { ...s, status: "failed", error: message } : s)),
     });
   }
+}
+
+async function emitDetectedCard(opts: {
+  origPixels: ImageData;
+  origArtId: string;
+  sourceId: string;
+  filename: string;
+  sourceIndex: number;
+  det: CardDetection;
+  get: Get;
+  set: Set;
+}) {
+  const { origPixels, origArtId, sourceId, filename, sourceIndex, det, get, set } = opts;
+  const cardId = crypto.randomUUID();
+  const rectified = rectifyCard(origPixels, det);
+  const croppedArt = await createDerivedArtifact({
+    cardId,
+    sourceId,
+    artifactType: "cropped",
+    parentArtifact: origArtId,
+    image: rectified,
+  });
+  pixels.set(croppedArt.id, rectified);
+  let oriented = rectified;
+  let croppedId = croppedArt.id;
+  let orientation: 0 | 90 | 180 | 270 = 0;
+  let orientationMethod = "layout";
+  let identity: CardIdentity | undefined;
+  try {
+    const idn = await identifyCard(rectified, filename, { vision: false });
+    identity = idn.identity;
+    if (idn.rotated) {
+      oriented = rotateImage(rectified, 180);
+      orientation = 180;
+      orientationMethod = "ocr";
+      const re = await createDerivedArtifact({
+        cardId,
+        sourceId,
+        artifactType: "cropped",
+        parentArtifact: croppedId,
+        image: oriented,
+      });
+      pixels.set(re.id, oriented);
+      croppedId = re.id;
+    }
+  } catch {
+    /* keep rectified */
+  }
+  const thumb = URL.createObjectURL(await encodeImage(thumbnail(oriented), "jpg", 0.8));
+  const card: CardRecord = {
+    id: cardId,
+    sourceId,
+    sourceFilename: filename,
+    sourceIndex,
+    cardIndex: det.cardIndex,
+    stage: "completed",
+    selected: false,
+    orientation,
+    orientationMethod,
+    orientationConfidence: orientation === 180 ? 0.8 : 0.55,
+    detectorMethod: det.detectorMethod,
+    detectorConfidence: det.confidence,
+    geometryConfidence: det.geometryConfidence,
+    geometryMethod: det.geometryMethod,
+    identity,
+    warnings: det.warnings,
+    thumbUrl: thumb,
+    croppedId,
+    upscaledId: null,
+    descratchedId: null,
+    combinedId: null,
+    originalId: origArtId,
+  };
+  set({
+    cards: [...get().cards, card],
+    selectedCardId: get().selectedCardId ?? cardId,
+  });
+  void persistCard(card);
+  void quoteCard(card.id, get, set);
 }
 
 async function extractOne(

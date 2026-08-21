@@ -32,6 +32,8 @@ export const Route = createFileRoute("/connectors")({
 const LABELS: { key: string; title: string; detail: string }[] = [
   { key: "xai", title: "xAI", detail: "Vision OCR fallback. Uses injected XAI_API_KEY." },
   { key: "neon", title: "Database", detail: "Neon when DATABASE_URL is set, otherwise in-process PGLite." },
+  { key: "pricecharting", title: "PriceCharting", detail: "OCR identity → eBay sold comps. No API key." },
+  { key: "ebay", title: "eBay", detail: "Sold/live search links. Direct sold HTML is WAF-blocked." },
   { key: "huggingface", title: "Hugging Face", detail: "PaddleOCR-VL via HF_TOKEN or HF_SPACE_URL." },
   { key: "slack", title: "Slack", detail: "Needs SLACK_BOT_TOKEN and SLACK_CHANNEL." },
   { key: "telegram", title: "Telegram", detail: "Needs TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID." },

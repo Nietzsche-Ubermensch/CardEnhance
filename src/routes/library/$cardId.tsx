@@ -1,12 +1,14 @@
-import { useState, type FormEvent, type HTMLAttributes } from "react";
+import { useEffect, useState, type FormEvent, type HTMLAttributes } from "react";
 import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { PageShell } from "@/components/studio/app-nav";
 import { PageError, PagePending } from "@/components/studio/page-states";
+import { PriceQuoteView } from "@/components/studio/price-quote";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Toaster } from "@/components/ui/sonner";
 import { getStoredCard, updateStoredCard, type StoredCard } from "@/lib/connectors/persist";
+import { lookupCardPrices, type PriceQuote } from "@/lib/prices";
 
 export const Route = createFileRoute("/library/$cardId")({
   loader: async ({ params }) => {
@@ -53,6 +55,7 @@ function CardDetailPage() {
         </Button>
       </div>
       <IdentityForm card={card} />
+      <LibraryPrices card={card} />
     </PageShell>
   );
 }
@@ -141,6 +144,47 @@ function IdentityForm({ card }: { card: StoredCard }) {
       </div>
     </form>
   );
+}
+
+function LibraryPrices({ card }: { card: StoredCard }) {
+  const [quote, setQuote] = useState<PriceQuote | null>(null);
+  const [status, setStatus] = useState<"idle" | "loading" | "ok" | "empty" | "error">("idle");
+  const [error, setError] = useState<string | undefined>();
+
+  const load = async () => {
+    setStatus("loading");
+    setError(undefined);
+    try {
+      const next = await lookupCardPrices({
+        data: {
+          identity: {
+            player: card.player,
+            year: card.year,
+            manufacturer: card.manufacturer,
+            set: card.setName,
+            number: card.number,
+            parallel: card.parallel,
+            side: card.side === "front" || card.side === "back" ? card.side : "unknown",
+            confidence: 1,
+            rawText: "",
+          },
+        },
+      });
+      setQuote(next);
+      setStatus(next.listings.length ? "ok" : "empty");
+    } catch (err) {
+      setStatus("error");
+      setError(err instanceof Error ? err.message : "Price lookup failed");
+    }
+  };
+
+  useEffect(() => {
+    void load();
+    // identity fields are the lookup key
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card.id, card.player, card.year, card.manufacturer, card.setName, card.number, card.parallel]);
+
+  return <PriceQuoteView quote={quote} status={status} error={error} onRefresh={() => void load()} />;
 }
 
 function Field({

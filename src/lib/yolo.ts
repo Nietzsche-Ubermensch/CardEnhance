@@ -46,36 +46,26 @@ let sessionReady: Promise<{ session: OrtSession; kind: "yolo26" | "yolo" | "card
 let cocoReady: Promise<{ session: OrtSession; kind: "yolo26" | "yolo" } | null> | null = null;
 let yoloDisabled = false;
 
-async function probe(url: string) {
-  try {
-    const res = await fetch(url, { method: "HEAD" });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
 async function getSession() {
   if (yoloDisabled) return null;
   if (!sessionReady) {
     sessionReady = (async () => {
       const origin = window.location.origin;
-      try {
-        if (await probe(`${origin}/models/card-det.onnx`)) {
-          const session = await createSession(`${origin}/models/card-det.onnx`, 25000);
-          return { session, kind: "card" as const };
-        }
-        const session = await createSession(`${origin}/models/yolo26n.onnx`, 25000);
-        return { session, kind: "yolo26" as const };
-      } catch {
+      const candidates = [
+        [`${origin}/models/card-det.onnx`, "card"],
+        [`${origin}/models/yolo26n.onnx`, "yolo26"],
+        [`${origin}/models/yolov8n.onnx`, "yolo"],
+      ] as const;
+      for (const [url, kind] of candidates) {
         try {
-          const session = await createSession(`${origin}/models/yolov8n.onnx`, 25000);
-          return { session, kind: "yolo" as const };
+          const session = await createSession(url, 25000);
+          return { session, kind };
         } catch {
-          yoloDisabled = true;
-          return null;
+          /* try next weight file */
         }
       }
+      yoloDisabled = true;
+      return null;
     })();
   }
   return sessionReady;
