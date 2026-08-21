@@ -1,0 +1,13 @@
+{
+  "train": 67,
+  "val": 17,
+  "epochs": 6,
+  "imgsz": 640,
+  "device": "cpu",
+  "model": "yolo11n.pt",
+  "class": "card",
+  "map50": 0.995,
+  "map": 0.9169465240641712,
+  "onnx": "/workspace/public/models/card-det.onnx",
+  "weights": "/workspace/models/card-seg/v1/best.pt"
+}
