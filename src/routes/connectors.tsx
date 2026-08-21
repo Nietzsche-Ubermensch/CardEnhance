@@ -12,6 +12,7 @@ import { checkConnectors, type ConnectorStatus } from "@/lib/connectors/status";
 import { listSecrets, saveSecrets } from "@/lib/connectors/secrets";
 import { listStoredCards } from "@/lib/connectors/persist";
 import { testNotify } from "@/lib/connectors/notify";
+import { probeR2 } from "@/lib/connectors/r2";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/connectors")({
@@ -38,6 +39,7 @@ const LABELS: { key: string; title: string; detail: string }[] = [
   { key: "pricecharting", title: "PriceCharting", detail: "No key. OCR identity → sold comps." },
   { key: "ebay", title: "eBay", detail: "Sold/live search links. HTML sold scrape is WAF-blocked unless Cloudflare tunnel is up." },
   { key: "cloudflare", title: "Cloudflare", detail: "Optional price tunnel Worker. Paste CLOUDFLARE_TUNNEL_URL after wrangler deploy." },
+  { key: "r2", title: "Cloudflare R2", detail: "Durable originals. Needs R2_ACCOUNT_ID, access keys, and R2_BUCKET." },
   { key: "huggingface", title: "Hugging Face", detail: "Optional PaddleOCR-VL. Upload HF_TOKEN." },
   { key: "slack", title: "Slack", detail: "SLACK_BOT_TOKEN + SLACK_CHANNEL." },
   { key: "telegram", title: "Telegram", detail: "TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID." },
@@ -215,7 +217,7 @@ function ConnectorsPage() {
             rows={8}
             spellCheck={false}
             className="w-full rounded-xl border border-border bg-elevated px-3 py-2 font-mono text-xs text-fg outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            placeholder={`XAI_API_KEY=\nHF_TOKEN=\nHF_SPACE_URL=\nDATABASE_URL=\nSLACK_BOT_TOKEN=\nSLACK_CHANNEL=\nTELEGRAM_BOT_TOKEN=\nTELEGRAM_CHAT_ID=\nVERCEL_TOKEN=\nENABLE_VISION=false\nCLOUDFLARE_TUNNEL_URL=\nCLOUDFLARE_TUNNEL_TOKEN=`}
+            placeholder={`XAI_API_KEY=\nHF_TOKEN=\nCLOUDFLARE_TUNNEL_URL=\nR2_ACCOUNT_ID=\nR2_ACCESS_KEY_ID=\nR2_SECRET_ACCESS_KEY=\nR2_BUCKET=\nR2_PUBLIC_BASE=`}
           />
         </div>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -247,7 +249,47 @@ function ConnectorsPage() {
           {pending ? "Sending" : "Send test"}
         </Button>
       </form>
+
+      <R2Probe />
     </PageShell>
+  );
+}
+
+function R2Probe() {
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const router = useRouter();
+  return (
+    <form
+      className="space-y-4 rounded-2xl border border-border bg-surface p-4 sm:p-6"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setPending(true);
+        setMessage(null);
+        try {
+          const result = await probeR2();
+          if (!result.ok) {
+            setMessage(result.error);
+            return;
+          }
+          setMessage(`Wrote and read ${result.key}`);
+          await router.invalidate();
+        } catch (err) {
+          setMessage(err instanceof Error ? err.message : "R2 probe failed");
+        } finally {
+          setPending(false);
+        }
+      }}
+    >
+      <div>
+        <h2 className="font-display text-xl">Test R2</h2>
+        <p className="text-sm text-muted">HEAD the bucket, PUT a health object, GET it back. Skips if keys are empty.</p>
+      </div>
+      {message ? <p className="text-sm text-muted">{message}</p> : null}
+      <Button type="submit" disabled={pending}>
+        {pending ? "Probing" : "Probe R2"}
+      </Button>
+    </form>
   );
 }
 

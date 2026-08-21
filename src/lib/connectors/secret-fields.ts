@@ -11,6 +11,11 @@ export const SECRET_FIELDS = [
   { key: "ENABLE_VISION", label: "Enable Grok vision", where: "true or false", kind: "text" as const },
   { key: "CLOUDFLARE_TUNNEL_URL", label: "Cloudflare Worker URL", where: "https://cardenhance-price-tunnel.…workers.dev", kind: "text" as const },
   { key: "CLOUDFLARE_TUNNEL_TOKEN", label: "Cloudflare tunnel token", where: "Worker AUTH_KEY_SECRET", kind: "secret" as const },
+  { key: "R2_ACCOUNT_ID", label: "R2 account ID", where: "Cloudflare dashboard account id", kind: "text" as const },
+  { key: "R2_ACCESS_KEY_ID", label: "R2 access key ID", where: "R2 API token access key", kind: "secret" as const },
+  { key: "R2_SECRET_ACCESS_KEY", label: "R2 secret access key", where: "R2 API token secret", kind: "secret" as const },
+  { key: "R2_BUCKET", label: "R2 bucket", where: "bucket name", kind: "text" as const },
+  { key: "R2_PUBLIC_BASE", label: "R2 public base URL", where: "https://pub-….r2.dev (optional)", kind: "text" as const },
 ] as const;
 
 export type SecretKey = (typeof SECRET_FIELDS)[number]["key"];

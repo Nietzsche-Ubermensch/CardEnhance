@@ -15,6 +15,7 @@ export const checkConnectors = createServerFn({ method: "GET" }).handler(async (
     pricecharting: "disconnected",
     ebay: "disconnected",
     cloudflare: "disconnected",
+    r2: "disconnected",
   };
 
   try {
@@ -95,6 +96,16 @@ export const checkConnectors = createServerFn({ method: "GET" }).handler(async (
       statuses.cloudflare = r.ok ? "connected" : "error";
     } catch {
       statuses.cloudflare = "error";
+    }
+  }
+
+  if (process.env.R2_ACCOUNT_ID?.trim() && process.env.R2_ACCESS_KEY_ID?.trim() && process.env.R2_SECRET_ACCESS_KEY?.trim() && process.env.R2_BUCKET?.trim()) {
+    try {
+      const { headBucket } = await import("./r2-io");
+      const head = await headBucket();
+      statuses.r2 = head.ok ? "connected" : "error";
+    } catch {
+      statuses.r2 = "error";
     }
   }
 

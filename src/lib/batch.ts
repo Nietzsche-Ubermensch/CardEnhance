@@ -6,6 +6,7 @@ import { detectCards, rectifyCard, type CardDetection } from "./detect-sheet";
 import { identifyCard, identityLabel } from "./identify";
 import { saveProcessedCard } from "./connectors/persist";
 import { notifyCardProcessed } from "./connectors/notify";
+import { putR2Object } from "./connectors/r2";
 import { upscaleCard } from "./upscale";
 import { buildScratchMask, descratchCard, validateScratchMask, type DescratchLevel } from "./descratch";
 import {
@@ -613,6 +614,18 @@ async function persistCard(card: CardRecord) {
         engine: card.identity?.engine,
       },
     });
+    const original = getArtifact(card.originalId);
+    if (original?.blob && original.blob.size > 0 && original.blob.size <= 8_000_000) {
+      const dataBase64 = await blobToBase64(original.blob);
+      void putR2Object({
+        data: {
+          key: `originals/${card.sourceId}/${card.id}`,
+          contentType: original.blob.type || "image/jpeg",
+          dataBase64,
+          cardId: card.id,
+        },
+      });
+    }
   } catch {
     /* persist is optional — processing already succeeded */
   }
@@ -873,6 +886,19 @@ async function runOnCards(
     updatedAt: Date.now(),
     activeLabel: busyStatus(st) ? get().activeLabel : "",
     runStartedAt: busyStatus(st) ? get().runStartedAt : null,
+  });
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read original"));
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.readAsDataURL(blob);
   });
 }
 
