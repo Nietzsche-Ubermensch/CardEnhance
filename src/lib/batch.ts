@@ -153,6 +153,10 @@ type Store = {
   exportStatus: "idle" | "building" | "ready" | "failed";
   exportError?: string;
   cancel: () => void;
+  ingestTotal: number;
+  ingestDone: number;
+  activeLabel: string;
+  runStartedAt: number | null;
 };
 
 let cancelled = false;
@@ -182,6 +186,86 @@ function dropFromBatch(status: BatchStatus): DropPhase {
   return "processing";
 }
 
+export function busyStatus(status: BatchStatus) {
+  return !["queued", "completed", "partial_success", "failed", "cancelled"].includes(status);
+}
+
+export function sourceProgress(source: SourceRecord): number {
+  if (source.status === "failed" || source.status === "completed") return 100;
+  if (source.status === "uploading") return 8;
+  if (source.status === "validating") return 18;
+  if (source.status === "detecting") return 40;
+  if (source.status === "cropping") return 70;
+  if (source.status === "orienting") return 85;
+  if (source.status === "retrying") return 20;
+  return 0;
+}
+
+export function cardProgress(card: CardRecord): number {
+  if (card.stage === "failed") return 100;
+  if (card.stage === "queued") return 0;
+  if (card.stage === "uploading") return 8;
+  if (card.stage === "validating") return 16;
+  if (card.stage === "retrying") return 12;
+  if (card.stage === "detecting") return 35;
+  if (card.stage === "cropping") return 55;
+  if (card.stage === "orienting") return 70;
+  if (card.stage === "upscaling") return 82;
+  if (card.stage === "descratching") return 90;
+  if (card.stage === "generating_previews") return 95;
+  if (card.stage === "completed") {
+    if (card.combinedId) return 100;
+    if (card.upscaledId && card.descratchedId) return 100;
+    if (card.upscaledId) return 88;
+    if (card.descratchedId) return 92;
+    return 76;
+  }
+  return 0;
+}
+
+export function computeBatchProgress(input: {
+  sources: SourceRecord[];
+  cards: CardRecord[];
+  ingestTotal: number;
+  ingestDone: number;
+  batchStatus: BatchStatus;
+}) {
+  const { sources, cards, ingestTotal, ingestDone, batchStatus } = input;
+  const ingestTarget = Math.max(ingestTotal, sources.length);
+  const sourceDone = sources.filter((s) => s.status === "completed" || s.status === "failed").length;
+  const cardsDone = cards.filter((c) => c.stage === "completed" || c.stage === "failed").length;
+  const restoring = cards.some((c) => ["upscaling", "descratching", "generating_previews", "retrying"].includes(c.stage));
+  let percent = 0;
+  if (ingestTarget > 0 && sourceDone < ingestTarget) {
+    const accounted = sources.reduce((sum, source) => sum + sourceProgress(source), 0);
+    percent = Math.round(accounted / ingestTarget);
+  } else if (restoring && cards.length) {
+    percent = Math.round(cards.reduce((sum, card) => sum + cardProgress(card), 0) / cards.length);
+  } else if (cards.length) {
+    percent = Math.round((cardsDone / cards.length) * 100);
+  } else if (sources.length) {
+    percent = Math.round((sourceDone / sources.length) * 100);
+  }
+  const busy = busyStatus(batchStatus) || restoring || (ingestTarget > 0 && sourceDone < ingestTarget);
+  const label = batchStatus.replaceAll("_", " ");
+  return { percent: Math.min(100, Math.max(0, percent)), label, busy };
+}
+
+function emptyIdentity(): CardIdentity {
+  return {
+    player: null,
+    year: null,
+    manufacturer: null,
+    set: null,
+    number: null,
+    parallel: null,
+    side: "unknown",
+    confidence: 0,
+    rawText: "",
+    engine: "ocr",
+  };
+}
+
 export const useBatch = create<Store>((set, get) => ({
   settings: defaultSettings,
   setSettings: (partial) => set({ settings: { ...get().settings, ...partial }, updatedAt: Date.now() }),
@@ -203,32 +287,51 @@ export const useBatch = create<Store>((set, get) => ({
   selectAll: (on) => set({ cards: get().cards.map((c) => ({ ...c, selected: on })) }),
   selectByStage: (stage) =>
     set({ cards: get().cards.map((c) => ({ ...c, selected: c.stage === stage })) }),
+  ingestTotal: 0,
+  ingestDone: 0,
+  activeLabel: "",
+  runStartedAt: null,
   cancel: () => {
     cancelled = true;
-    set({ batchStatus: "cancelled", dropPhase: "idle" });
+    set({ batchStatus: "cancelled", dropPhase: get().sources.length ? "partial_failure" : "idle", activeLabel: "Cancelled" });
   },
   addFiles: async (files) => {
     cancelled = false;
-    set({ dropPhase: "uploading", batchStatus: "uploading" });
+    set({
+      dropPhase: "uploading",
+      batchStatus: "uploading",
+      activeLabel: "Reading files",
+      runStartedAt: Date.now(),
+    });
     let expanded: File[] = [];
     try {
       expanded = await expandFiles(files);
     } catch {
-      set({ dropPhase: "failure", batchStatus: "failed" });
+      set({ dropPhase: "failure", batchStatus: "failed", activeLabel: "Could not read files" });
       return;
     }
-    set({ dropPhase: "processing", batchStatus: "validating" });
+    const already = get().sources.length;
+    set({
+      dropPhase: "processing",
+      batchStatus: "validating",
+      ingestTotal: already + expanded.length,
+      ingestDone: already,
+      activeLabel: `${expanded.length} file${expanded.length === 1 ? "" : "s"}`,
+    });
     const conc = get().settings.concurrency;
     let i = 0;
     const run = async () => {
       while (i < expanded.length && !cancelled) {
         const idx = i++;
-        await ingestSource(expanded[idx], get, set);
+        const file = expanded[idx];
+        set({ activeLabel: file.name, updatedAt: Date.now() });
+        await ingestSource(file, get, set);
+        set({ ingestDone: get().ingestDone + 1, updatedAt: Date.now() });
       }
     };
     await Promise.all(Array.from({ length: conc }, run));
     const st = nowBatchStatus(get().cards, get().sources);
-    set({ batchStatus: st, dropPhase: dropFromBatch(st), updatedAt: Date.now() });
+    set({ batchStatus: st, dropPhase: dropFromBatch(st), updatedAt: Date.now(), activeLabel: st === "completed" ? "" : get().activeLabel, runStartedAt: busyStatus(st) ? get().runStartedAt : null });
   },
   rotateCard: async (id, degrees) => {
     const card = get().cards.find((c) => c.id === id);
@@ -730,7 +833,12 @@ async function runOnCards(
   set: Set,
 ) {
   cancelled = false;
-  set({ dropPhase: "processing", batchStatus: stage === "upscaling" ? "upscaling" : "descratching" });
+  set({
+    dropPhase: "processing",
+    batchStatus: stage === "upscaling" ? "upscaling" : "descratching",
+    runStartedAt: Date.now(),
+    activeLabel: stage.replaceAll("_", " "),
+  });
   const conc = get().settings.concurrency;
   let i = 0;
   const list = ids.filter(Boolean);
@@ -739,7 +847,11 @@ async function runOnCards(
       const id = list[i++];
       const card = get().cards.find((c) => c.id === id);
       if (!card) continue;
-      set({ cards: get().cards.map((c) => (c.id === id ? { ...c, stage, error: undefined } : c)) });
+      set({
+        cards: get().cards.map((c) => (c.id === id ? { ...c, stage, error: undefined } : c)),
+        activeLabel: identityLabel(card.identity ?? emptyIdentity()) || card.sourceFilename,
+        updatedAt: Date.now(),
+      });
       try {
         await fn(get().cards.find((c) => c.id === id)!);
         set({
@@ -755,7 +867,13 @@ async function runOnCards(
   };
   await Promise.all(Array.from({ length: conc }, run));
   const st = nowBatchStatus(get().cards, get().sources);
-  set({ batchStatus: st, dropPhase: dropFromBatch(st), updatedAt: Date.now() });
+  set({
+    batchStatus: st,
+    dropPhase: dropFromBatch(st),
+    updatedAt: Date.now(),
+    activeLabel: busyStatus(st) ? get().activeLabel : "",
+    runStartedAt: busyStatus(st) ? get().runStartedAt : null,
+  });
 }
 
 function humanError(err: unknown) {

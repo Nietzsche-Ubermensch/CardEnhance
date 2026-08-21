@@ -21,6 +21,7 @@ import { FoilField } from "@/components/studio/foil-field";
 import { ConnectorStatusBar } from "@/components/studio/connector-status";
 import { AppNav } from "@/components/studio/app-nav";
 import { PriceQuoteView } from "@/components/studio/price-quote";
+import { BatchProgress, CardProgressBar, SourceProgressBar } from "@/components/studio/batch-progress";
 import {
   useBatch,
   cardUrl,
@@ -92,6 +93,7 @@ export function StudioApp() {
 
         <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 px-3 py-4 sm:px-6">
           <DropPanel phase={dropPhase} status={batchStatus} sourceCount={sources.length} cardCount={cards.length} />
+          {sources.length || cards.length ? <BatchProgress /> : null}
           {sources.length ? <SourceQueue sources={sources} /> : null}
           {cards.length > 0 ? (
             <>
@@ -274,6 +276,7 @@ function SourceQueue({ sources }: { sources: SourceRecord[] }) {
               {source.status.replaceAll("_", " ")}
               {source.width ? ` · ${source.width}×${source.height}` : ""}
             </p>
+            <SourceProgressBar source={source} />
             {source.error ? <p className="text-xs text-destructive">{source.error}</p> : null}
           </div>
           <div className="flex flex-col gap-1">
@@ -578,6 +581,7 @@ function CardGrid({ cards, selectedId }: { cards: CardRecord[]; selectedId: stri
               {card.combinedId ? <MiniBadge>UP+DS</MiniBadge> : null}
             </span>
             <span className="block truncate bg-bg/80 px-1 py-1 text-[10px] text-muted">{stageLabel(card)}</span>
+            <CardProgressBar card={card} />
           </button>
         ))}
       </div>
