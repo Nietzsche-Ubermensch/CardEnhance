@@ -217,7 +217,7 @@ function ConnectorsPage() {
             rows={8}
             spellCheck={false}
             className="w-full rounded-xl border border-border bg-elevated px-3 py-2 font-mono text-xs text-fg outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            placeholder={`XAI_API_KEY=\nHF_TOKEN=\nCLOUDFLARE_TUNNEL_URL=\nR2_ACCOUNT_ID=\nR2_ACCESS_KEY_ID=\nR2_SECRET_ACCESS_KEY=\nR2_BUCKET=\nR2_PUBLIC_BASE=`}
+            placeholder={`R2_ACCOUNT_ID=\nR2_ACCESS_KEY_ID=\nR2_SECRET_ACCESS_KEY=\nR2_BUCKET=\nR2_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com\nR2_PUBLIC_BASE=`}
           />
         </div>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -283,7 +283,7 @@ function R2Probe() {
     >
       <div>
         <h2 className="font-display text-xl">Test R2</h2>
-        <p className="text-sm text-muted">HEAD the bucket, PUT a health object, GET it back. Skips if keys are empty.</p>
+        <p className="text-sm text-muted">HEAD the bucket, PUT a health object, GET it back using the S3 API (`region: auto`, path-style). Skips if keys are empty.</p>
       </div>
       {message ? <p className="text-sm text-muted">{message}</p> : null}
       <Button type="submit" disabled={pending}>

@@ -1,88 +1,105 @@
-import { createHash, createHmac } from "node:crypto";
+import {
+  GetObjectCommand,
+  HeadBucketCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 
 export type R2Config = {
   accountId: string;
   accessKeyId: string;
   secretAccessKey: string;
   bucket: string;
+  endpoint: string;
   publicBase: string;
 };
 
+function jurisdictionHost(accountId: string) {
+  const j = (process.env.R2_JURISDICTION ?? "").trim().toLowerCase();
+  if (j === "eu") return `${accountId}.eu.r2.cloudflarestorage.com`;
+  if (j === "us") return `${accountId}.us.r2.cloudflarestorage.com`;
+  if (j === "fedramp") return `${accountId}.fedramp.r2.cloudflarestorage.com`;
+  return `${accountId}.r2.cloudflarestorage.com`;
+}
+
 export function r2Config(): R2Config | null {
   const accountId = process.env.R2_ACCOUNT_ID?.trim() ?? "";
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID?.trim() ?? "";
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim() ?? "";
-  const bucket = process.env.R2_BUCKET?.trim() ?? "";
-  if (!accountId || !accessKeyId || !secretAccessKey || !bucket) return null;
-  const publicBase = (process.env.R2_PUBLIC_BASE?.trim() || `https://${accountId}.r2.cloudflarestorage.com/${bucket}`).replace(/\/$/, "");
-  return { accountId, accessKeyId, secretAccessKey, bucket, publicBase };
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID?.trim() ?? process.env.AWS_ACCESS_KEY_ID?.trim() ?? "";
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim() ?? process.env.AWS_SECRET_ACCESS_KEY?.trim() ?? "";
+  const bucket = process.env.R2_BUCKET?.trim() ?? process.env.AWS_S3_BUCKET?.trim() ?? "";
+  const endpoint = (process.env.R2_ENDPOINT?.trim() || process.env.AWS_ENDPOINT_URL?.trim() || (accountId ? `https://${jurisdictionHost(accountId)}` : "")).replace(/\/$/, "");
+  if (!accessKeyId || !secretAccessKey || !bucket || !endpoint) return null;
+  const publicBase = (process.env.R2_PUBLIC_BASE?.trim() || `${endpoint}/${bucket}`).replace(/\/$/, "");
+  return { accountId, accessKeyId, secretAccessKey, bucket, endpoint, publicBase };
 }
 
-function hmac(key: Buffer | string, data: string) {
-  return createHmac("sha256", key).update(data, "utf8").digest();
-}
-
-function sha256Hex(data: Buffer | string) {
-  return createHash("sha256").update(data).digest("hex");
-}
-
-function amzDate(now = new Date()) {
-  const iso = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
-  return { amz: iso.slice(0, 15) + "Z", day: iso.slice(0, 8) };
-}
-
-async function signedFetch(opts: {
-  method: "HEAD" | "GET" | "PUT";
-  key?: string;
-  body?: Buffer;
-  contentType?: string;
-}) {
+function s3(): { client: S3Client; cfg: R2Config } | null {
   const cfg = r2Config();
-  if (!cfg) return { ok: false as const, status: 0, error: "R2 credentials missing" };
-  const host = `${cfg.accountId}.r2.cloudflarestorage.com`;
-  const path = opts.key ? `/${cfg.bucket}/${opts.key.split("/").map(encodeURIComponent).join("/")}` : `/${cfg.bucket}`;
-  const body = opts.body ?? Buffer.alloc(0);
-  const payloadHash = sha256Hex(body);
-  const { amz, day } = amzDate();
-  const contentType = opts.contentType ?? "";
-  const headers: Record<string, string> = {
-    host,
-    "x-amz-content-sha256": payloadHash,
-    "x-amz-date": amz,
+  if (!cfg) return null;
+  return {
+    cfg,
+    client: new S3Client({
+      region: "auto",
+      endpoint: cfg.endpoint,
+      credentials: {
+        accessKeyId: cfg.accessKeyId,
+        secretAccessKey: cfg.secretAccessKey,
+      },
+      forcePathStyle: true,
+    }),
   };
-  if (contentType) headers["content-type"] = contentType;
-  const signedHeaderNames = Object.keys(headers).sort();
-  const canonicalHeaders = signedHeaderNames.map((name) => `${name}:${headers[name]}\n`).join("");
-  const signedHeaders = signedHeaderNames.join(";");
-  const canonical = [opts.method, path, "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
-  const scope = `${day}/auto/s3/aws4_request`;
-  const stringToSign = ["AWS4-HMAC-SHA256", amz, scope, sha256Hex(canonical)].join("\n");
-  const kDate = hmac(`AWS4${cfg.secretAccessKey}`, day);
-  const kRegion = hmac(kDate, "auto");
-  const kService = hmac(kRegion, "s3");
-  const kSigning = hmac(kService, "aws4_request");
-  const signature = createHmac("sha256", kSigning).update(stringToSign, "utf8").digest("hex");
-  headers.authorization = `AWS4-HMAC-SHA256 Credential=${cfg.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-  const res = await fetch(`https://${host}${path}`, {
-    method: opts.method,
-    headers,
-    body: opts.method === "PUT" ? new Uint8Array(body) : undefined,
-  });
-  const text = opts.method === "GET" ? await res.text() : "";
-  return { ok: res.ok, status: res.status, etag: res.headers.get("etag"), body: text, error: res.ok ? undefined : `R2 HTTP ${res.status}` };
 }
 
 export async function headBucket() {
-  return signedFetch({ method: "HEAD" });
+  const bound = s3();
+  if (!bound) return { ok: false as const, status: 0, error: "R2 credentials missing" };
+  try {
+    await bound.client.send(new HeadBucketCommand({ Bucket: bound.cfg.bucket }));
+    return { ok: true as const, status: 200 };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "HEAD bucket failed";
+    return { ok: false as const, status: 0, error: message };
+  }
 }
 
 export async function putObject(key: string, body: Buffer, contentType: string) {
-  const cfg = r2Config();
-  const result = await signedFetch({ method: "PUT", key, body, contentType });
-  const url = cfg ? `${cfg.publicBase}/${key}` : "";
-  return { ...result, key, url };
+  const bound = s3();
+  if (!bound) return { ok: false as const, status: 0, error: "R2 credentials missing", key, url: "" };
+  try {
+    const result = await bound.client.send(
+      new PutObjectCommand({
+        Bucket: bound.cfg.bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      }),
+    );
+    return {
+      ok: true as const,
+      status: 200,
+      etag: result.ETag,
+      key,
+      url: `${bound.cfg.publicBase}/${key}`,
+    };
+  } catch (err) {
+    return {
+      ok: false as const,
+      status: 0,
+      error: err instanceof Error ? err.message : "PUT failed",
+      key,
+      url: "",
+    };
+  }
 }
 
 export async function getObject(key: string) {
-  return signedFetch({ method: "GET", key });
+  const bound = s3();
+  if (!bound) return { ok: false as const, status: 0, error: "R2 credentials missing", body: "" };
+  try {
+    const result = await bound.client.send(new GetObjectCommand({ Bucket: bound.cfg.bucket, Key: key }));
+    const body = (await result.Body?.transformToString()) ?? "";
+    return { ok: true as const, status: 200, body, etag: result.ETag };
+  } catch (err) {
+    return { ok: false as const, status: 0, error: err instanceof Error ? err.message : "GET failed", body: "" };
+  }
 }

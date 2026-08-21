@@ -15,6 +15,7 @@ export const SECRET_FIELDS = [
   { key: "R2_ACCESS_KEY_ID", label: "R2 access key ID", where: "R2 API token access key", kind: "secret" as const },
   { key: "R2_SECRET_ACCESS_KEY", label: "R2 secret access key", where: "R2 API token secret", kind: "secret" as const },
   { key: "R2_BUCKET", label: "R2 bucket", where: "bucket name", kind: "text" as const },
+  { key: "R2_ENDPOINT", label: "R2 S3 endpoint", where: "https://<ACCOUNT_ID>.r2.cloudflarestorage.com", kind: "text" as const },
   { key: "R2_PUBLIC_BASE", label: "R2 public base URL", where: "https://pub-….r2.dev (optional)", kind: "text" as const },
 ] as const;
 
@@ -26,6 +27,11 @@ const ALLOWED = new Set<string>(SECRET_FIELDS.map((field) => field.key));
 function aliasKey(key: string) {
   if (key === "HUGGINGFACE_HUB_TOKEN") return "HF_TOKEN";
   if (key === "NEON_DATABASE_URL") return "DATABASE_URL";
+  if (key === "AWS_ACCESS_KEY_ID") return "R2_ACCESS_KEY_ID";
+  if (key === "AWS_SECRET_ACCESS_KEY") return "R2_SECRET_ACCESS_KEY";
+  if (key === "AWS_ENDPOINT_URL" || key === "AWS_ENDPOINT") return "R2_ENDPOINT";
+  if (key === "AWS_S3_BUCKET" || key === "S3_BUCKET") return "R2_BUCKET";
+  if (key === "AWS_ACCOUNT_ID") return "R2_ACCOUNT_ID";
   return key;
 }
 
