@@ -36,7 +36,8 @@ const LABELS: { key: string; title: string; detail: string }[] = [
   { key: "xai", title: "xAI", detail: "Optional Grok vision. Upload XAI_API_KEY." },
   { key: "neon", title: "Database", detail: "Neon DATABASE_URL, else local PGLite." },
   { key: "pricecharting", title: "PriceCharting", detail: "No key. OCR identity → sold comps." },
-  { key: "ebay", title: "eBay", detail: "No key. Sold/live search links." },
+  { key: "ebay", title: "eBay", detail: "Sold/live search links. HTML sold scrape is WAF-blocked unless Cloudflare tunnel is up." },
+  { key: "cloudflare", title: "Cloudflare", detail: "Optional price tunnel Worker. Paste CLOUDFLARE_TUNNEL_URL after wrangler deploy." },
   { key: "huggingface", title: "Hugging Face", detail: "Optional PaddleOCR-VL. Upload HF_TOKEN." },
   { key: "slack", title: "Slack", detail: "SLACK_BOT_TOKEN + SLACK_CHANNEL." },
   { key: "telegram", title: "Telegram", detail: "TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID." },
@@ -214,7 +215,7 @@ function ConnectorsPage() {
             rows={8}
             spellCheck={false}
             className="w-full rounded-xl border border-border bg-elevated px-3 py-2 font-mono text-xs text-fg outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            placeholder={`XAI_API_KEY=\nHF_TOKEN=\nHF_SPACE_URL=\nDATABASE_URL=\nSLACK_BOT_TOKEN=\nSLACK_CHANNEL=\nTELEGRAM_BOT_TOKEN=\nTELEGRAM_CHAT_ID=\nVERCEL_TOKEN=\nENABLE_VISION=false`}
+            placeholder={`XAI_API_KEY=\nHF_TOKEN=\nHF_SPACE_URL=\nDATABASE_URL=\nSLACK_BOT_TOKEN=\nSLACK_CHANNEL=\nTELEGRAM_BOT_TOKEN=\nTELEGRAM_CHAT_ID=\nVERCEL_TOKEN=\nENABLE_VISION=false\nCLOUDFLARE_TUNNEL_URL=\nCLOUDFLARE_TUNNEL_TOKEN=`}
           />
         </div>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}

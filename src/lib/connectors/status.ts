@@ -14,6 +14,7 @@ export const checkConnectors = createServerFn({ method: "GET" }).handler(async (
     telegram: "disconnected",
     pricecharting: "disconnected",
     ebay: "disconnected",
+    cloudflare: "disconnected",
   };
 
   try {
@@ -82,6 +83,19 @@ export const checkConnectors = createServerFn({ method: "GET" }).handler(async (
     statuses.ebay = r.status === 200 ? "connected" : "error";
   } catch {
     statuses.ebay = "error";
+  }
+
+  const tunnel = process.env.CLOUDFLARE_TUNNEL_URL?.trim().replace(/\/$/, "");
+  if (tunnel) {
+    try {
+      const headers: Record<string, string> = {};
+      const token = process.env.CLOUDFLARE_TUNNEL_TOKEN?.trim();
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const r = await fetch(`${tunnel}/health`, { headers, signal: AbortSignal.timeout(4000) });
+      statuses.cloudflare = r.ok ? "connected" : "error";
+    } catch {
+      statuses.cloudflare = "error";
+    }
   }
 
   return statuses;

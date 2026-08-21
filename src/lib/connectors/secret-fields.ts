@@ -9,6 +9,8 @@ export const SECRET_FIELDS = [
   { key: "TELEGRAM_CHAT_ID", label: "Telegram chat ID", where: "numeric id", kind: "text" as const },
   { key: "VERCEL_TOKEN", label: "Vercel token", where: "vercel.com/account/tokens", kind: "secret" as const },
   { key: "ENABLE_VISION", label: "Enable Grok vision", where: "true or false", kind: "text" as const },
+  { key: "CLOUDFLARE_TUNNEL_URL", label: "Cloudflare Worker URL", where: "https://cardenhance-price-tunnel.…workers.dev", kind: "text" as const },
+  { key: "CLOUDFLARE_TUNNEL_TOKEN", label: "Cloudflare tunnel token", where: "Worker AUTH_KEY_SECRET", kind: "secret" as const },
 ] as const;
 
 export type SecretKey = (typeof SECRET_FIELDS)[number]["key"];

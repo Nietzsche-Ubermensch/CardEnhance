@@ -125,16 +125,43 @@ function parsePriceCharting(html: string, identity: Partial<CardIdentity>): Pric
   return out;
 }
 
-async function fetchText(url: string): Promise<{ ok: boolean; status: number; body: string }> {
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (compatible; CardEnhance/1.0; +https://grok.com)",
-      Accept: "text/html,application/xhtml+xml",
-    },
-    redirect: "follow",
-  });
+async function fetchText(url: string): Promise<{ ok: boolean; status: number; body: string; via: "direct" | "cloudflare" }> {
+  const tunnel = process.env.CLOUDFLARE_TUNNEL_URL?.trim().replace(/\/$/, "");
+  const token = process.env.CLOUDFLARE_TUNNEL_TOKEN?.trim();
+  const headers: Record<string, string> = {
+    "User-Agent": "Mozilla/5.0 (compatible; CardEnhance/1.0)",
+    Accept: "text/html,application/xhtml+xml",
+  };
+  const target = tunnel ? `${tunnel}/fetch?url=${encodeURIComponent(url)}` : url;
+  if (tunnel && token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(target, { headers, redirect: "follow" });
   const body = await res.text();
-  return { ok: res.ok, status: res.status, body };
+  return { ok: res.ok, status: res.status, body, via: tunnel ? "cloudflare" : "direct" };
+}
+
+function parseEbaySold(html: string, identity: Partial<CardIdentity>): PriceListing[] {
+  if (/sign in|captcha|pardon our interruption/i.test(html) && !/s-item__title/i.test(html)) return [];
+  const chunks = html.split(/s-item__/i);
+  const out: PriceListing[] = [];
+  for (const chunk of chunks) {
+    const title = decode((chunk.match(/title[^>]*>([^<]{8,180})/i) ?? [])[1] ?? "");
+    const price = money((chunk.match(/\$[\d,]+(?:\.\d{2})?/) ?? [])[0]);
+    const href = (chunk.match(/href="(https:\/\/www\.ebay\.com\/itm\/[^"]+)"/i) ?? [])[1];
+    if (!title || !price || !href) continue;
+    const listing: PriceListing = {
+      source: "ebay",
+      title,
+      setName: "",
+      url: href,
+      ungraded: price,
+      graded: null,
+      mint: null,
+      score: 0,
+    };
+    listing.score = scoreListing(listing, identity);
+    out.push(listing);
+  }
+  return out;
 }
 
 export const lookupCardPrices = createServerFn({ method: "POST" })
@@ -143,6 +170,8 @@ export const lookupCardPrices = createServerFn({ method: "POST" })
     return data;
   })
   .handler(async ({ data }): Promise<PriceQuote> => {
+    const { applySecrets } = await import("./connectors/secrets-io");
+    await applySecrets();
     const query = identityQuery(data.identity);
     const notes: string[] = [];
     if (!query) {
@@ -168,7 +197,6 @@ export const lookupCardPrices = createServerFn({ method: "POST" })
     const sciSearchUrl = `https://www.sportscardinvestor.com/?s=${q}`;
 
     notes.push("Sports Card Investor has no public API. Their sold comps are subscription-only.");
-    notes.push("eBay sold HTML is blocked from this host. Sold-search links stay live.");
 
     let listings: PriceListing[] = [];
     const queries = [query];
@@ -180,6 +208,7 @@ export const lookupCardPrices = createServerFn({ method: "POST" })
         const page = await fetchText(
           `https://www.pricecharting.com/search-products?q=${encodeURIComponent(term)}&type=prices`,
         );
+        if (page.via === "cloudflare") notes.push("PriceCharting fetched through Cloudflare Worker.");
         if (!page.ok) {
           notes.push(`PriceCharting HTTP ${page.status} for “${term}”.`);
           continue;
@@ -190,6 +219,16 @@ export const lookupCardPrices = createServerFn({ method: "POST" })
       } catch (err) {
         notes.push(err instanceof Error ? err.message : "PriceCharting unreachable.");
       }
+    }
+
+    try {
+      const sold = await fetchText(ebaySoldUrl);
+      if (sold.via === "cloudflare") notes.push("eBay sold page fetched through Cloudflare Worker.");
+      const parsed = parseEbaySold(sold.body, data.identity);
+      if (parsed.length) listings.push(...parsed);
+      else notes.push("eBay sold HTML is still blocked or login-walled. Sold-search links stay live.");
+    } catch {
+      notes.push("eBay sold HTML is blocked from this host. Sold-search links stay live.");
     }
 
     const seen = new Set<string>();

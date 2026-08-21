@@ -10,6 +10,7 @@ const LABELS: Record<string, string> = {
   telegram: "TG",
   pricecharting: "PC",
   ebay: "eBay",
+  cloudflare: "CF",
 };
 
 export function ConnectorStatusBar() {
@@ -22,7 +23,7 @@ export function ConnectorStatusBar() {
         if (live) setStatus(next);
       })
       .catch(() => {
-        if (live) setStatus({ xai: "disconnected", neon: "error", slack: "disconnected", huggingface: "disconnected", telegram: "disconnected", pricecharting: "error", ebay: "error" });
+        if (live) setStatus({ xai: "disconnected", neon: "error", slack: "disconnected", huggingface: "disconnected", telegram: "disconnected", pricecharting: "error", ebay: "error", cloudflare: "disconnected" });
       });
     return () => {
       live = false;
