@@ -4,6 +4,8 @@ import { dbSource, getSql } from "@/lib/db";
 export type ConnectorStatus = "connected" | "pglite" | "disconnected" | "error";
 
 export const checkConnectors = createServerFn({ method: "GET" }).handler(async () => {
+  const { applySecrets } = await import("./secrets-io");
+  await applySecrets();
   const statuses: Record<string, ConnectorStatus> = {
     xai: process.env.XAI_API_KEY?.trim() ? "connected" : "disconnected",
     neon: "disconnected",

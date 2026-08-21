@@ -90,6 +90,8 @@ export const readTradingCard = createServerFn({ method: "POST" })
     return data;
   })
   .handler(async ({ data }): Promise<VisionOcrResult> => {
+    const { applySecrets } = await import("./connectors/secrets-io");
+    await applySecrets();
     const apiKey = process.env.XAI_API_KEY;
     if (!apiKey) return { ok: false, error: "unavailable" };
 

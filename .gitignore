@@ -12,6 +12,7 @@ artifacts
 .DS_Store
 data/runs
 data/raw-cards/dump
+data/secrets.json
 attachments
 yolo11n.pt
 .grok

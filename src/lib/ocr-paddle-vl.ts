@@ -105,6 +105,8 @@ export const readPaddleVl = createServerFn({ method: "POST" })
   .validator((input: { jpeg: string }) => input)
   .handler(async ({ data }): Promise<PaddleVlResult> => {
     try {
+      const { applySecrets } = await import("./connectors/secrets-io");
+      await applySecrets();
       return await callHf(data.jpeg);
     } catch (err) {
       const message = err instanceof Error ? err.message : "MODEL_UNAVAILABLE";

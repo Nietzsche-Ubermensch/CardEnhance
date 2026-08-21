@@ -10,6 +10,8 @@ function telegramToken() {
 }
 
 async function dispatch(text: string) {
+  const { applySecrets } = await import("./secrets-io");
+  await applySecrets();
   const slack = slackToken();
   const channel = process.env.SLACK_CHANNEL?.trim();
   const tg = telegramToken();
