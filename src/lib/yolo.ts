@@ -154,6 +154,7 @@ function pushBox(
   scale: number,
   W: number,
   H: number,
+  isCardModel: boolean,
 ) {
   const x = Math.max(0, Math.min(x1, x2) / scale);
   const y = Math.max(0, Math.min(y1, y2) / scale);
@@ -167,11 +168,14 @@ function pushBox(
     h,
     score,
     classId: cls,
-    label: cls === 0 ? "card" : (COCO[cls] ?? String(cls)),
+    // Only the fine-tuned single-class card model may emit the "card" label.
+    // For COCO models class 0 is "person" and must keep that label so the
+    // PERSON guard in cardFitnessSheet/cardFitness rejects it.
+    label: isCardModel ? "card" : (COCO[cls] ?? String(cls)),
   });
 }
 
-function decodeYolo26(data: Float32Array | number[], dims: number[], scale: number, W: number, H: number): YoloBox[] {
+function decodeYolo26(data: Float32Array | number[], dims: number[], scale: number, W: number, H: number, isCardModel: boolean): YoloBox[] {
   const boxes: YoloBox[] = [];
   let n = 0;
   let stride = 6;
@@ -197,12 +201,12 @@ function decodeYolo26(data: Float32Array | number[], dims: number[], scale: numb
     const score = at(i, 4);
     if (score < CONF) continue;
     const cls = Math.round(at(i, 5));
-    pushBox(boxes, at(i, 0), at(i, 1), at(i, 2), at(i, 3), score, cls, scale, W, H);
+    pushBox(boxes, at(i, 0), at(i, 1), at(i, 2), at(i, 3), score, cls, scale, W, H, isCardModel);
   }
   return boxes;
 }
 
-function decodeYolo8(data: Float32Array | number[], dims: number[], scale: number, W: number, H: number): YoloBox[] {
+function decodeYolo8(data: Float32Array | number[], dims: number[], scale: number, W: number, H: number, isCardModel: boolean): YoloBox[] {
   const boxes: YoloBox[] = [];
   let preds: number;
   let stride: number;
@@ -244,7 +248,7 @@ function decodeYolo8(data: Float32Array | number[], dims: number[], scale: numbe
     const cy = at(1, i);
     const bw = at(2, i);
     const bh = at(3, i);
-    pushBox(boxes, cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2, best, cls, scale, W, H);
+    pushBox(boxes, cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2, best, cls, scale, W, H, isCardModel);
   }
   return nms(boxes);
 }
@@ -254,15 +258,16 @@ function decode(
   scale: number,
   W: number,
   H: number,
+  isCardModel: boolean,
 ): YoloBox[] {
   const { data, dims } = output;
   if (
     (dims.length === 3 && (dims[1] === 6 || dims[2] === 6)) ||
     (dims.length === 2 && dims[1] === 6)
   ) {
-    return decodeYolo26(data, dims, scale, W, H);
+    return decodeYolo26(data, dims, scale, W, H, isCardModel);
   }
-  return decodeYolo8(data, dims, scale, W, H);
+  return decodeYolo8(data, dims, scale, W, H, isCardModel);
 }
 
 function cardFitness(box: YoloBox, W: number, H: number) {
@@ -329,7 +334,13 @@ async function runDetect(
   const outName = loaded.session.outputNames[0] ?? Object.keys(result)[0];
   const output = outName ? result[outName] : undefined;
   if (!output) return [] as YoloBox[];
-  return decode({ data: output.data as Float32Array, dims: output.dims }, scale, src.width, src.height);
+  return decode(
+    { data: output.data as Float32Array, dims: output.dims },
+    scale,
+    src.width,
+    src.height,
+    loaded.kind === "card",
+  );
 }
 
 export async function detectCardBoxes(src: ImageData): Promise<{

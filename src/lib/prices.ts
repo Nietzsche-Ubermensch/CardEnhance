@@ -134,7 +134,12 @@ async function fetchText(url: string): Promise<{ ok: boolean; status: number; bo
   };
   const target = tunnel ? `${tunnel}/fetch?url=${encodeURIComponent(url)}` : url;
   if (tunnel && token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(target, { headers, redirect: "follow" });
+  const binding = (globalThis as typeof globalThis & {
+    __PRICE_TUNNEL__?: { fetch: (input: string, init?: RequestInit) => Promise<Response> };
+  }).__PRICE_TUNNEL__;
+  const res = binding
+    ? await binding.fetch(target, { headers, redirect: "follow" })
+    : await fetch(target, { headers, redirect: "follow" });
   const body = await res.text();
   return { ok: res.ok, status: res.status, body, via: tunnel ? "cloudflare" : "direct" };
 }
