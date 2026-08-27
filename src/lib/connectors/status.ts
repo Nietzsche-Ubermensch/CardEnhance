@@ -92,7 +92,12 @@ export const checkConnectors = createServerFn({ method: "GET" }).handler(async (
       const headers: Record<string, string> = {};
       const token = process.env.CLOUDFLARE_TUNNEL_TOKEN?.trim();
       if (token) headers.Authorization = `Bearer ${token}`;
-      const r = await fetch(`${tunnel}/health`, { headers, signal: AbortSignal.timeout(4000) });
+      const binding = (globalThis as typeof globalThis & {
+        __PRICE_TUNNEL__?: { fetch: (input: string, init?: RequestInit) => Promise<Response> };
+      }).__PRICE_TUNNEL__;
+      const r = binding
+        ? await binding.fetch(`${tunnel}/health`, { headers })
+        : await fetch(`${tunnel}/health`, { headers, signal: AbortSignal.timeout(4000) });
       statuses.cloudflare = r.ok ? "connected" : "error";
     } catch {
       statuses.cloudflare = "error";
