@@ -27,9 +27,18 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
+
+function formatCardDate(value: string | null | undefined): string {
+  if (!value) return "\u2014";
+  // DB rows may arrive as "YYYY-MM-DD HH:MM:SS" (no T, UTC) which Safari rejects
+  const s = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(value) ? value.replace(" ", "T") + "Z" : value;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString();
+}
+
 function Dashboard() {
   const { cards, status, logs } = Route.useLoaderData();
-  const processed = cards.filter((c: any) => c.status === "processed").length;
+  const processed = cards.filter((c: any) => c.status === "completed").length;
   const connectorList = Object.entries(status);
   const liveCount = connectorList.filter(([, s]: [string, any]) => s?.ok || s?.connected).length;
 
@@ -116,7 +125,7 @@ function Dashboard() {
                       <td>
                         <span className={`badge ${card.status}`}>{card.status}</span>
                       </td>
-                      <td>{new Date(card.created_at).toLocaleDateString()}</td>
+                      <td>{formatCardDate(card.createdAt)}</td>
                     </tr>
                   ))}
                 </tbody>
