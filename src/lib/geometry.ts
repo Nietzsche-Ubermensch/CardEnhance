@@ -115,6 +115,48 @@ export function warpPerspective(src: ImageData, quad: Quad, dw: number, dh: numb
 
 export type GeometryMethod = "quad" | "minAreaRect" | "axis_box";
 
+/**
+ * Full-bleed scans: edge detection lands a few % INSIDE the true card edge,
+ * which clips logos/nameplates at the frame. When a detected corner sits within
+ * `thresh` (normalized) of a frame corner, the card reaches the frame there —
+ * reclaim it. If 3 corners snap to 3 distinct frame corners, the scan is
+ * full-bleed and the 4th corner is the 4th frame corner.
+ */
+export function snapQuadToFrame(quad: Quad, W: number, H: number, thresh = 0.07): Quad {
+  const corners: Point[] = [
+    { x: 0, y: 0 },
+    { x: W, y: 0 },
+    { x: W, y: H },
+    { x: 0, y: H },
+  ];
+  const out = quad.map((p) => ({ ...p })) as Quad;
+  const snapped = [false, false, false, false];
+  for (let i = 0; i < 4; i++) {
+    let best = corners[0];
+    let bd = Infinity;
+    for (const c of corners) {
+      const d = ((out[i].x - c.x) / W) ** 2 + ((out[i].y - c.y) / H) ** 2;
+      if (d < bd) {
+        bd = d;
+        best = c;
+      }
+    }
+    if (Math.sqrt(bd) <= thresh) {
+      out[i] = { ...best };
+      snapped[i] = true;
+    }
+  }
+  if (snapped.filter(Boolean).length === 3) {
+    const used = new Set(out.filter((_, i) => snapped[i]).map((p) => `${p.x},${p.y}`));
+    if (used.size === 3) {
+      const missing = corners.filter((c) => !used.has(`${c.x},${c.y}`));
+      const idx = snapped.indexOf(false);
+      if (missing.length) out[idx] = { ...missing[0] };
+    }
+  }
+  return out;
+}
+
 export function recoverQuad(
   src: ImageData,
   box: { x: number; y: number; w: number; h: number },
@@ -128,13 +170,13 @@ export function recoverQuad(
   const region = cropRect(src, x0, y0, x1, y1);
   const found = findQuad(region);
   if (found) {
-    const quad = found.map((p) => ({ x: p.x + x0, y: p.y + y0 })) as Quad;
+    const quad = snapQuadToFrame(found.map((p) => ({ x: p.x + x0, y: p.y + y0 })) as Quad, src.width, src.height);
     const geom = validateQuad(quad, src.width, src.height);
     if (geom.ok) return { quad, method: "quad", confidence: geom.confidence };
   }
   const obb = minAreaRect(region);
   if (obb) {
-    const quad = obb.map((p) => ({ x: p.x + x0, y: p.y + y0 })) as Quad;
+    const quad = snapQuadToFrame(obb.map((p) => ({ x: p.x + x0, y: p.y + y0 })) as Quad, src.width, src.height);
     const geom = validateQuad(quad, src.width, src.height);
     if (geom.ok) return { quad, method: "minAreaRect", confidence: Math.min(0.62, geom.confidence) };
   }
