@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CardEnhance — Local</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header>
+  <div class="brand">⚡ CardEnhance <span class="tag">LOCAL</span></div>
+  <nav>
+    <a href="/index.html" class="on">Studio</a>
+    <a href="/library.html">Library</a>
+    <span id="status" class="status"></span>
+  </nav>
+</header>
+
+<main>
+  <section id="drop" class="drop">
+    <div class="drop-inner">
+      <div class="drop-icon">⬆</div>
+      <h1>Drop card scans here</h1>
+      <p>One image, many, or a ZIP. Everything stays on this machine.</p>
+      <button id="pick">Choose images</button>
+      <input id="file" type="file" accept="image/*,.zip" multiple hidden>
+    </div>
+  </section>
+
+  <section id="batch" class="batch hidden">
+    <div class="batch-head">
+      <h2>Batch</h2><span id="batch-meta"></span>
+    </div>
+    <div id="cards" class="cards"></div>
+  </section>
+</main>
+
+<template id="card-tpl">
+  <article class="card">
+    <div class="card-imgs">
+      <figure><figcaption>Original</figcaption><img class="orig" alt="original"></figure>
+      <figure><figcaption>Rectified</figcaption><img class="rect" alt="rectified"></figure>
+      <figure class="enh-wrap hidden"><figcaption>Enhanced</figcaption><img class="enh" alt="enhanced"></figure>
+    </div>
+    <div class="card-body">
+      <div class="det-line"></div>
+      <div class="fields">
+        <label>Player <input data-f="player"></label>
+        <label>Set <input data-f="set_name"></label>
+        <label>Manufacturer <input data-f="manufacturer"></label>
+        <label>Year <input data-f="year" type="number"></label>
+        <label>Number <input data-f="number"></label>
+        <label>Parallel <input data-f="parallel"></label>
+      </div>
+      <div class="actions">
+        <button class="save">Save</button>
+        <button class="up2">Upscale 2×</button>
+        <button class="up4">Upscale 4×</button>
+        <button class="clean">Cleanup</button>
+        <a class="dl" download>Download</a>
+      </div>
+      <div class="comps hidden">
+        <h3>Market comps <span class="comps-note"></span></h3>
+        <div class="comps-nums"></div>
+        <div class="comps-links"></div>
+      </div>
+      <details class="ocr"><summary>OCR text</summary><pre></pre></details>
+    </div>
+  </article>
+</template>
+
+<script src="/app.js"></script>
+</body>
+</html>
