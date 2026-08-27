@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CardEnhance — Library</title>
+<link rel="stylesheet" href="/app.css">
+<style>
+  .lib-tools { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
+  .lib-tools input { flex: 1; background: var(--panel2); border: 1px solid var(--line);
+    color: var(--text); border-radius: 10px; padding: 10px 14px; font-size: 14px; }
+  .lib-tools input:focus { outline: 1px solid var(--accent2); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    overflow: hidden; cursor: pointer; transition: .15s; }
+  .tile:hover { border-color: var(--accent2); transform: translateY(-2px); }
+  .tile img { width: 100%; aspect-ratio: 0.72; object-fit: contain; background: #06090d; display: block; }
+  .tile .t-body { padding: 10px 12px; }
+  .tile .t-name { font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .t-sub { color: var(--muted); font-size: 11.5px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .empty { color: var(--muted); text-align: center; padding: 80px 0; }
+  #detail { margin-bottom: 26px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">⚡ CardEnhance <span class="tag">LOCAL</span></div>
+  <nav>
+    <a href="/index.html">Studio</a>
+    <a href="/library.html" class="on">Library</a>
+    <span id="status" class="status"></span>
+  </nav>
+</header>
+
+<main>
+  <div class="lib-tools">
+    <input id="q" placeholder="Search player, set, manufacturer, year, number…">
+    <span id="count" class="status"></span>
+  </div>
+
+  <section id="detail" class="hidden"></section>
+  <section id="grid" class="grid"></section>
+  <div id="empty" class="empty hidden">No cards yet — drop scans in the <a href="/index.html" style="color:var(--accent2)">Studio</a>.</div>
+</main>
+
+<template id="lib-card-tpl">
+  <article class="card">
+    <div class="card-imgs">
+      <figure><figcaption>Original</figcaption><img class="orig" alt="original"></figure>
+      <figure><figcaption>Rectified</figcaption><img class="rect" alt="rectified"></figure>
+      <figure class="enh-wrap hidden"><figcaption>Enhanced</figcaption><img class="enh" alt="enhanced"></figure>
+    </div>
+    <div class="card-body">
+      <div class="det-line"></div>
+      <div class="fields">
+        <label>Player <input data-f="player"></label>
+        <label>Set <input data-f="set_name"></label>
+        <label>Manufacturer <input data-f="manufacturer"></label>
+        <label>Year <input data-f="year" type="number"></label>
+        <label>Number <input data-f="number"></label>
+        <label>Parallel <input data-f="parallel"></label>
+      </div>
+      <div class="actions">
+        <button class="save">Save</button>
+        <button class="up2">Upscale 2×</button>
+        <button class="up4">Upscale 4×</button>
+        <button class="clean">Cleanup</button>
+        <a class="dl" download>Download</a>
+        <button class="ghost close">Close</button>
+      </div>
+      <details class="ocr"><summary>OCR text</summary><pre></pre></details>
+    </div>
+  </article>
+</template>
+
+<script src="/library.js"></script>
+</body>
+</html>

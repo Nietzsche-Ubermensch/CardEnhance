@@ -1,0 +1,6 @@
+# populated by run.sh / run.bat on first launch
+models/
+tessdata/
+data/
+.venv/
+__pycache__/
