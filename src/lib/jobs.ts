@@ -32,6 +32,10 @@ function newId() {
   return crypto.randomUUID();
 }
 
+function revokeObjectUrl(url: string | undefined) {
+  if (url?.startsWith("blob:")) URL.revokeObjectURL(url);
+}
+
 export const useStudio = create<StudioState>((set, get) => ({
   settings: defaultSettings,
   jobs: [],
@@ -42,10 +46,17 @@ export const useStudio = create<StudioState>((set, get) => ({
   setTab: (tab) => set({ activeTab: tab }),
   selectJob: (id) => set({ selectedJobId: id, activeTab: id ? "preview" : get().activeTab }),
   removeJob: (id) =>
-    set((state) => ({
-      jobs: state.jobs.filter((j) => j.id !== id),
-      selectedJobId: state.selectedJobId === id ? null : state.selectedJobId,
-    })),
+    set((state) => {
+      const removed = state.jobs.find((job) => job.id === id);
+      removed?.images.forEach((image) => {
+        revokeObjectUrl(image.originalUrl);
+        revokeObjectUrl(image.enhancedUrl);
+      });
+      return {
+        jobs: state.jobs.filter((j) => j.id !== id),
+        selectedJobId: state.selectedJobId === id ? null : state.selectedJobId,
+      };
+    }),
   startJob: async (files) => {
     const settings = { ...get().settings };
     const expanded = await expandFiles(files);
@@ -151,9 +162,7 @@ export const useStudio = create<StudioState>((set, get) => ({
                   progress: Math.round((finished / total) * 100),
                   images: j.images.map((img) => {
                     if (img.id !== imageId) return img;
-                    if (img.originalUrl.startsWith("blob:")) {
-                      URL.revokeObjectURL(img.originalUrl);
-                    }
+                    revokeObjectUrl(img.originalUrl);
                     return {
                       ...img,
                       originalUrl: alignedOriginal,
