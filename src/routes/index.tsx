@@ -21,15 +21,14 @@ export const Route = createFileRoute("/")({
   ),
   errorComponent: () => (
     <PageShell current="/">
-      <PageError label="Failed to load dashboard" />
+      <PageError message="Failed to load dashboard" />
     </PageShell>
   ),
   component: Dashboard,
 });
 
-
 function formatCardDate(value: string | null | undefined): string {
-  if (!value) return "\u2014";
+  if (!value) return "—";
   // DB rows may arrive as "YYYY-MM-DD HH:MM:SS" (no T, UTC) which Safari rejects
   const s = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(value) ? value.replace(" ", "T") + "Z" : value;
   const d = new Date(s);
@@ -68,8 +67,8 @@ function Dashboard() {
     return (
       <PageShell current="/">
         <PageEmpty
-          label="No cards yet"
-          hint="Open the studio to upload and process your first card scans"
+          title="No cards yet"
+          body="Open the studio to upload and process your first card scans"
           action={<Link to="/studio" className="btn-primary">Open Studio</Link>}
         />
       </PageShell>
@@ -96,7 +95,7 @@ function Dashboard() {
               <div key={stage.label} className="pipeline-stage">
                 <stage.icon size={18} />
                 <span>{stage.label}</span>
-                {i < pipeline.length - 1 && <span className="arrow">\u2192</span>}
+                {i < pipeline.length - 1 && <span className="arrow">→</span>}
               </div>
             ))}
           </div>

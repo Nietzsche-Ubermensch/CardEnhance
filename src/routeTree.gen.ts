@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as StudioRouteImport } from './routes/studio'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as LibraryIndexRouteImport } from './routes/library/index'
@@ -18,6 +19,11 @@ import { Route as LibraryCardIdRouteImport } from './routes/library/$cardId'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StudioRoute = StudioRouteImport.update({
+  id: '/studio',
+  path: '/studio',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuditRoute = AuditRouteImport.update({
@@ -43,6 +49,7 @@ const LibraryCardIdRoute = LibraryCardIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/studio': typeof StudioRoute
   '/audit': typeof AuditRoute
   '/connectors': typeof ConnectorsRoute
   '/library/$cardId': typeof LibraryCardIdRoute
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/studio': typeof StudioRoute
   '/audit': typeof AuditRoute
   '/connectors': typeof ConnectorsRoute
   '/library/$cardId': typeof LibraryCardIdRoute
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/studio': typeof StudioRoute
   '/audit': typeof AuditRoute
   '/connectors': typeof ConnectorsRoute
   '/library/$cardId': typeof LibraryCardIdRoute
@@ -65,12 +74,13 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/audit' | '/connectors' | '/library/$cardId' | '/library/'
+  fullPaths: '/' | '/studio' | '/audit' | '/connectors' | '/library/$cardId' | '/library/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/audit' | '/connectors' | '/library/$cardId' | '/library'
+  to: '/' | '/studio' | '/audit' | '/connectors' | '/library/$cardId' | '/library'
   id:
     | '__root__'
     | '/'
+    | '/studio'
     | '/audit'
     | '/connectors'
     | '/library/$cardId'
@@ -79,6 +89,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  StudioRoute: typeof StudioRoute
   AuditRoute: typeof AuditRoute
   ConnectorsRoute: typeof ConnectorsRoute
   LibraryCardIdRoute: typeof LibraryCardIdRoute
@@ -92,6 +103,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/studio': {
+      id: '/studio'
+      path: '/studio'
+      fullPath: '/studio'
+      preLoaderRoute: typeof StudioRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/audit': {
@@ -127,6 +145,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  StudioRoute: StudioRoute,
   AuditRoute: AuditRoute,
   ConnectorsRoute: ConnectorsRoute,
   LibraryCardIdRoute: LibraryCardIdRoute,
