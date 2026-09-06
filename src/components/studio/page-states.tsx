@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 export function PagePending({ label }: { label: string }) {
   return (
     <div className="flex min-h-[40vh] flex-col items-center justify-center gap-2 text-center">
@@ -15,11 +17,20 @@ export function PageError({ message }: { message: string }) {
   );
 }
 
-export function PageEmpty({ title, body }: { title: string; body: string }) {
+export function PageEmpty({
+  title,
+  body,
+  action,
+}: {
+  title: string;
+  body: string;
+  action?: ReactNode;
+}) {
   return (
     <div className="rounded-2xl border border-border bg-surface px-6 py-16 text-center">
       <h2 className="font-display text-xl">{title}</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-muted">{body}</p>
+      {action ? <div className="mt-5 flex justify-center">{action}</div> : null}
     </div>
   );
 }
