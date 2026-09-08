@@ -16,7 +16,10 @@ export default tseslint.config(
       "node_modules/**",
       "src/routeTree.gen.ts",
       // Vendored, minified bundles shipped by tesseract.js and onnxruntime-web.
-      "public/**",
+      // Scoped to those two directories so first-party scripts added elsewhere
+      // under public/ stay linted.
+      "public/tess/**",
+      "public/ort/**",
     ],
   },
   js.configs.recommended,
