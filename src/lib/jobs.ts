@@ -140,7 +140,7 @@ export const useStudio = create<StudioState>((set, get) => ({
         });
         const classical = await pool.enhance(pixels, settings);
         let image = classical.image;
-        let blemishCount = classical.blemishCount;
+        const blemishCount = classical.blemishCount;
         let cnn = false;
         if (settings.cnnRestore || settings.upscaling) {
           const restored = await cnnRestore(image, settings);

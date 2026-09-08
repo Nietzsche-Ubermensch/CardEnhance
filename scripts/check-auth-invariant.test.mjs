@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -14,7 +14,7 @@ import {
   compareAuthInvariant,
   probeDevAuthEnabled,
 } from "./check-auth-invariant.mjs";
-import { projectRoot } from "./with-app-env.mjs";
+import { APP_ENV_REL_PATH, projectRoot } from "./with-app-env.mjs";
 
 /**
  * Run `body` against a real dev server carrying the template's plugin, started
@@ -114,9 +114,14 @@ test("only a divergence warns the smoke verdict", () => {
   }
 });
 
-test("the build side resolves the template's shipped app-env", () => {
-  assert.equal(buildAuthEnabled(projectRoot(), {}), false);
-  assert.equal(buildAuthEnabled(projectRoot(), { VITE_AUTH_ENABLED: "true" }), true);
+test("the build side resolves a workspace's shipped app-env", () => {
+  // Against a fixture, not this checkout: .grok/app-env.json is gitignored, so
+  // reading it out of the repo asserts developer-local state and nothing in CI.
+  const root = mkdtempSync(join(tmpdir(), "auth-invariant-env-"));
+  mkdirSync(join(root, ".grok"), { recursive: true });
+  writeFileSync(join(root, APP_ENV_REL_PATH), '{"VITE_AUTH_ENABLED":"false"}');
+  assert.equal(buildAuthEnabled(root, {}), false);
+  assert.equal(buildAuthEnabled(root, { VITE_AUTH_ENABLED: "true" }), true);
 });
 
 test("the CLI reports rather than silently passing when run via a symlink", async () => {
