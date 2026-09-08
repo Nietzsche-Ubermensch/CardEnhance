@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { loadEnv } from "vite";
@@ -17,6 +17,7 @@ import {
 const execFileAsync = promisify(execFile);
 const WRAPPER = join(projectRoot(), "scripts/with-app-env.mjs");
 const PRINT_FLAG = "process.stdout.write(String(process.env.VITE_AUTH_ENABLED));";
+const AUTH_OFF = '{"VITE_AUTH_ENABLED":"false"}';
 
 function makeWorkspace(appEnvJson) {
   const root = mkdtempSync(join(tmpdir(), "app-env-"));
@@ -28,20 +29,22 @@ function makeWorkspace(appEnvJson) {
 }
 
 /**
- * A workspace the wrapper CLI resolves as its own root.
+ * A copy of the wrapper CLI that resolves a fixture workspace as its own root.
+ * Returns the path to that copy.
  *
- * `.grok/app-env.json` is gitignored, so the checkout the tests run against
- * has none — a CLI test that reads it out of this repo asserts whatever the
+ * `.grok/app-env.json` is gitignored, so the checkout the tests run against has
+ * none — a CLI test that reads it out of this repo asserts whatever the
  * developer's machine happens to carry, and nothing at all in CI. The wrapper
  * derives `projectRoot()` from its own realpathed location, so the script is
  * copied rather than symlinked: a symlink realpaths back here and the fixture's
  * app-env would never govern.
  */
-function makeWrapperWorkspace(appEnvJson) {
+function makeWrapperScript(appEnvJson = AUTH_OFF) {
   const root = makeWorkspace(appEnvJson);
   mkdirSync(join(root, "scripts"), { recursive: true });
-  copyFileSync(WRAPPER, join(root, "scripts/with-app-env.mjs"));
-  return root;
+  const script = join(root, "scripts/with-app-env.mjs");
+  copyFileSync(WRAPPER, script);
+  return script;
 }
 
 test("keeps VITE_-prefixed string entries", () => {
@@ -92,9 +95,8 @@ test("vite loadEnv resolves the wrapped value", () => {
 });
 
 test("the wrapped command runs with the app env applied", async () => {
-  const root = makeWrapperWorkspace('{"VITE_AUTH_ENABLED":"false"}');
   const { stdout } = await execFileAsync(process.execPath, [
-    join(root, "scripts/with-app-env.mjs"),
+    makeWrapperScript(),
     process.execPath,
     "-e",
     PRINT_FLAG,
@@ -103,10 +105,9 @@ test("the wrapped command runs with the app env applied", async () => {
 });
 
 test("the wrapped command sees an explicit override, not the file value", async () => {
-  const root = makeWrapperWorkspace('{"VITE_AUTH_ENABLED":"false"}');
   const { stdout } = await execFileAsync(
     process.execPath,
-    [join(root, "scripts/with-app-env.mjs"), process.execPath, "-e", PRINT_FLAG],
+    [makeWrapperScript(), process.execPath, "-e", PRINT_FLAG],
     { env: { ...process.env, VITE_AUTH_ENABLED: "true" } },
   );
   assert.equal(stdout, "true");
@@ -136,9 +137,8 @@ test("a signal-killed command is never reported as success", async () => {
 test("the CLI still runs when invoked through a symlinked path", async () => {
   // node realpaths import.meta.url but not process.argv[1], so a raw comparison
   // turns the wrapper into a no-op that exits 0 without starting anything.
-  const root = makeWrapperWorkspace('{"VITE_AUTH_ENABLED":"false"}');
   const link = join(mkdtempSync(join(tmpdir(), "app-env-link-")), "scripts");
-  symlinkSync(join(root, "scripts"), link);
+  symlinkSync(dirname(makeWrapperScript()), link);
   const { stdout } = await execFileAsync(process.execPath, [
     join(link, "with-app-env.mjs"),
     process.execPath,

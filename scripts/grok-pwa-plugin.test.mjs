@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   appNameFromHost,
-  createHeadInjector,
+  createHeadInjector as createHeadInjectorRaw,
   grokXCreatorHeadTags,
-  injectGrokPwaHead,
+  injectGrokPwaHead as injectGrokPwaHeadRaw,
   isDocumentPath,
   isInstallQuery,
   renderWebManifest,
@@ -20,13 +20,22 @@ import { renderInstallPage } from "./grok-pwa-plugin.mjs";
 const TEMPLATE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
- * An omitted `site` is read off disk — normalizeHeadContext falls back to
- * snapshotOgIdentity(cwd), which parses src/lib/og/site.json. Once a workspace
- * ships one, its title outranks the document title, host slug and appName in
- * resolveOgTitle, so a test asserting one of those lower fallbacks has to say
- * "no site identity" rather than rely on the file being absent.
+ * An empty workspace, so head injection resolves against nothing on disk.
+ *
+ * normalizeHeadContext falls back to snapshotOgIdentity(cwd) whenever `site` is
+ * omitted — a live re-read that dev-server injection depends on, but that makes
+ * this repo's own src/lib/og/site.json outrank the document title, host slug and
+ * appName in resolveOgTitle. Defaulting `cwd` here rather than opting out at each
+ * call site keeps a test that omits `site` exercising the fallback chain it
+ * names, including one written after this comment. Pass `cwd` or `site`
+ * explicitly to exercise the disk-backed path.
  */
-const NO_SITE = {};
+const ISOLATED_CWD = mkdtempSync(join(tmpdir(), "grok-og-isolated-"));
+
+const injectGrokPwaHead = (html, ctx = {}) =>
+  injectGrokPwaHeadRaw(html, { cwd: ISOLATED_CWD, ...ctx });
+const createHeadInjector = (ctx = {}) =>
+  createHeadInjectorRaw({ cwd: ISOLATED_CWD, ...ctx });
 
 test("injects before </head>", () => {
   const out = injectGrokPwaHead("<html><head><title>x</title></head><body></body></html>");
@@ -112,7 +121,7 @@ test("does not duplicate x:creator tags", () => {
 test("platform chrome overwrites share-card metas and always sets og:title", () => {
   const html =
     '<html><head><title>Hello World</title><meta property="og:title" content="Old"><meta name="twitter:card" content="summary"></head></html>';
-  const out = injectGrokPwaHead(html, { appName: "Wild Race", site: NO_SITE });
+  const out = injectGrokPwaHead(html, { appName: "Wild Race" });
   assert.match(out, /name="twitter:card" content="summary_large_image"/);
   assert.match(out, /property="og:title" content="Hello World"/);
   assert.doesNotMatch(out, /content="Old"/);
@@ -213,7 +222,6 @@ test("site title Grok App is a real name, not a sentinel", () => {
 test("published grok.me slug is still a title fallback", () => {
   const out = injectGrokPwaHead("<html><head></head></html>", {
     host: "wild-race.grok.me",
-    site: NO_SITE,
   });
   assert.match(out, /property="og:title" content="Wild Race"/);
 });
@@ -265,7 +273,6 @@ test("placeholder og:image appends site.color when it is 6-digit hex", () => {
 test("document title entities are not double-escaped on og:title", () => {
   const out = injectGrokPwaHead(
     "<html><head><title>Cats &amp; Dogs</title></head></html>",
-    { site: NO_SITE },
   );
   assert.match(out, /property="og:title" content="Cats &amp; Dogs"/);
   assert.doesNotMatch(out, /Cats &amp;amp; Dogs/);
@@ -280,17 +287,14 @@ test("site.json title wins over the host slug", () => {
 });
 
 test("injects into documents with no head element", () => {
-  const out = injectGrokPwaHead("<html><body>hi</body></html>", {
-    appName: "Solo",
-    site: NO_SITE,
-  });
+  const out = injectGrokPwaHead("<html><body>hi</body></html>", { appName: "Solo" });
   assert.match(out, /<head>/);
   assert.match(out, /property="og:title" content="Solo"/);
   assert.match(out, /<\/head>/);
 });
 
 test("streaming injector matches </HEAD> case-insensitively", () => {
-  const injector = createHeadInjector({ appName: "Wild Race", site: NO_SITE });
+  const injector = createHeadInjector({ appName: "Wild Race" });
   const chunks = [
     ...injector.push("<html><HEAD><title>x</title></HE"),
     ...injector.push("AD><body>hello</body></html>"),
@@ -315,10 +319,7 @@ test("is idempotent", () => {
 });
 
 test("uses the app name in the injected title tag", () => {
-  const out = injectGrokPwaHead("<html><head></head></html>", {
-    appName: "Wild Race",
-    site: NO_SITE,
-  });
+  const out = injectGrokPwaHead("<html><head></head></html>", { appName: "Wild Race" });
   assert.match(out, /apple-mobile-web-app-title" content="Wild Race"/);
 });
 
