@@ -21,7 +21,7 @@ export const Route = createFileRoute("/")({
   ),
   errorComponent: () => (
     <PageShell current="/">
-      <PageError label="Failed to load dashboard" />
+      <PageError message="Failed to load dashboard" />
     </PageShell>
   ),
   component: Dashboard,
@@ -68,9 +68,13 @@ function Dashboard() {
     return (
       <PageShell current="/">
         <PageEmpty
-          label="No cards yet"
-          hint="Open the studio to upload and process your first card scans"
-          action={<Link to="/studio" className="btn-primary">Open Studio</Link>}
+          title="No cards yet"
+          body="Open the studio to upload and process your first card scans"
+          action={
+            <Link to="/studio" className="btn-primary">
+              Open Studio
+            </Link>
+          }
         />
       </PageShell>
     );

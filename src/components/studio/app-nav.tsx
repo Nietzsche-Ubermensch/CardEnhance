@@ -4,7 +4,8 @@ import { Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ITEMS = [
-  { to: "/", label: "Studio" },
+  { to: "/", label: "Dashboard" },
+  { to: "/studio", label: "Studio" },
   { to: "/library", label: "Library" },
   { to: "/audit", label: "Audit" },
   { to: "/connectors", label: "Connectors" },
