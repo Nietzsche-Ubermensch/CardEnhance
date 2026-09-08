@@ -121,7 +121,7 @@ export function processPixels(
   settings: EnhancementSettings,
 ): { data: Uint8ClampedArray; blemishCount: number } {
   const orig = new Uint8ClampedArray(src);
-  let data = new Uint8ClampedArray(src);
+  const data = new Uint8ClampedArray(src);
   let blemishCount = 0;
 
   if (settings.blemishRemoval) {
